@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Echoes of Avaris - Web Realm</title>
+    <style>
+        canvas { border: 1px solid black; }
+        #chat { position: absolute; bottom: 10px; left: 10px; width: 300px; }
+        #messages { height: 100px; overflow-y: scroll; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="chat">
+        <div id="messages"></div>
+        <input type="text" id="chatInput" placeholder="Type a message...">
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
