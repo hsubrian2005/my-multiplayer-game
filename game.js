@@ -3,7 +3,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+document.body.appendChild(renderer.domElement); // Ensure renderer is added to body
 
 // Ground
 const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
@@ -30,8 +30,10 @@ document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 // WebSocket
 const socket = new WebSocket('ws://localhost:8080');
 socket.onopen = () => console.log("Connected to server");
+socket.onerror = (error) => console.error("WebSocket error:", error);
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    console.log("Received message:", data); // Debug log
     switch (data.type) {
         case 'init':
             playerId = data.id;
@@ -64,7 +66,7 @@ socket.onmessage = (event) => {
 function createStickman(data) {
     const material = new THREE.MeshBasicMaterial({ color: parseInt(data.color.slice(1), 16) });
     const mesh = new THREE.Mesh(playerGeometry, material);
-    mesh.position.set(data.x, 10, data.z || 0); // y=10 to center cylinder
+    mesh.position.set(data.x, 10, data.z || 0);
     return mesh;
 }
 
@@ -93,15 +95,6 @@ function updateMapObjects(objects) {
         }
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(obj.x, (obj.height || obj.radius) / 2, obj.z || 0);
-        if (obj.type === 'enemy' && obj.health) {
-            const text = new THREE.Mesh(
-                new THREE.TextGeometry(obj.health.toString(), { font: new THREE.Font(), size: 5, height: 1 }),
-                new THREE.MeshBasicMaterial({ color: 0x000000 })
-            );
-            text.position.set(obj.x - 5, obj.radius + 5, obj.z || 0);
-            scene.add(text);
-            setTimeout(() => scene.remove(text), 100); // Temp health display
-        }
         scene.add(mesh);
         return mesh;
     });
@@ -130,7 +123,7 @@ document.getElementById('craftWall').addEventListener('click', () => {
         document.getElementById('rocks').textContent = inventory.rocks;
         socket.send(JSON.stringify({
             type: 'craft',
-            object: { type: 'wall', x: player.position.x + 20, y: 10, z: player.position.z, width: 40, height: 20, color: player.material.color.getHexString() }
+            object: { type: 'wall', x: player.position.x + 20, y: 10, z: player.position.z, width: 40, height: 20, color: '#' + player.material.color.getHex().toString(16) }
         }));
     }
 });
@@ -140,9 +133,8 @@ document.getElementById('craftTower').addEventListener('click', () => {
         inventory.rocks -= 5;
         document.getElementById('rocks').textContent = inventory.rocks;
         socket.send(JSON.stringify({
-            type: 'craft _
-
-            object: { type: 'tower', x: player.position.x + 20, y: 15, z: player.position.z, width: 30, height: 30, color: player.material.color.getHexString() }
+            type: 'craft',
+            object: { type: 'tower', x: player.position.x + 20, y: 15, z: player.position.z, width: 30, height: 30, color: '#' + player.material.color.getHex().toString(16) }
         }));
     }
 });
