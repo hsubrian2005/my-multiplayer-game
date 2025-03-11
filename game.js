@@ -50,10 +50,8 @@ socket.onmessage = (event) => {
             if (data.mapObjects) {
                 map.objects = data.mapObjects;
             }
-            // Prompt for team after init ensures playerId exists
             if (!player.team) {
-                const team = prompt("Choose a team: Red or Blue").toLowerCase();
-                socket.send(JSON.stringify({ type: 'setTeam', team: team === 'blue' ? 'Blue' : 'Red' }));
+                showTeamButtons();
             }
             break;
         case 'playerJoined':
@@ -79,6 +77,39 @@ socket.onmessage = (event) => {
             break;
     }
 };
+
+// Team selection UI
+function showTeamButtons() {
+    const teamDiv = document.createElement('div');
+    teamDiv.style.position = 'absolute';
+    teamDiv.style.top = '100px';
+    teamDiv.style.left = '10px';
+    teamDiv.style.background = 'rgba(255, 255, 255, 0.8)';
+    teamDiv.style.padding = '10px';
+
+    const redButton = document.createElement('button');
+    redButton.textContent = 'Join Red Team';
+    redButton.style.backgroundColor = '#FF0000';
+    redButton.style.color = 'white';
+    redButton.addEventListener('click', () => {
+        socket.send(JSON.stringify({ type: 'setTeam', team: 'Red' }));
+        document.body.removeChild(teamDiv);
+    });
+
+    const blueButton = document.createElement('button');
+    blueButton.textContent = 'Join Blue Team';
+    blueButton.style.backgroundColor = '#0000FF';
+    blueButton.style.color = 'white';
+    blueButton.style.marginLeft = '10px';
+    blueButton.addEventListener('click', () => {
+        socket.send(JSON.stringify({ type: 'setTeam', team: 'Blue' }));
+        document.body.removeChild(teamDiv);
+    });
+
+    teamDiv.appendChild(redButton);
+    teamDiv.appendChild(blueButton);
+    document.body.appendChild(teamDiv);
+}
 
 function checkCollisions() {
     if (Array.isArray(map.objects)) {
@@ -126,6 +157,25 @@ function craftWall() {
     }
 }
 
+function craftTower() {
+    if (inventory.rocks >= 5) {
+        inventory.rocks -= 5;
+        const newTower = {
+            type: 'tower',
+            x: player.x + 20,
+            y: player.y,
+            width: 30,
+            height: 30,
+            color: player.team === 'Blue' ? '#0000FF' : '#FF0000'
+        };
+        map.objects.push(newTower);
+        socket.send(JSON.stringify({ type: 'craft', object: newTower }));
+        console.log("Crafted a tower!");
+    } else {
+        console.log("Need 5 rocks to craft a tower!");
+    }
+}
+
 function update() {
     if (keys['w'] || keys['arrowup']) player.y -= player.speed;
     if (keys['s'] || keys['arrowdown']) player.y += player.speed;
@@ -155,13 +205,12 @@ function draw() {
     if (Array.isArray(map.objects)) {
         map.objects.forEach(obj => {
             ctx.fillStyle = obj.color;
-            if (obj.type === 'water' || obj.type === 'wall') {
+            if (obj.type === 'water' || obj.type === 'wall' || obj.type === 'tower') {
                 ctx.fillRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
             } else {
                 ctx.beginPath();
                 ctx.arc(obj.x - camera.x, obj.y - camera.y, obj.radius, 0, Math.PI * 2);
                 ctx.fill();
-                // Show enemy health
                 if (obj.type === 'enemy' && obj.health) {
                     ctx.fillStyle = 'black';
                     ctx.font = '12px Arial';
@@ -189,13 +238,22 @@ function draw() {
     ctx.fillText(`Rocks: ${inventory.rocks}`, 10, 40);
 }
 
-const craftButton = document.createElement('button');
-craftButton.textContent = 'Craft Wall (3 Rocks)';
-craftButton.style.position = 'absolute';
-craftButton.style.left = '10px';
-craftButton.style.top = '60px';
-craftButton.addEventListener('click', craftWall);
-document.body.appendChild(craftButton);
+// Crafting buttons
+const craftWallButton = document.createElement('button');
+craftWallButton.textContent = 'Craft Wall (3 Rocks)';
+craftWallButton.style.position = 'absolute';
+craftWallButton.style.left = '10px';
+craftWallButton.style.top = '60px';
+craftWallButton.addEventListener('click', craftWall);
+document.body.appendChild(craftWallButton);
+
+const craftTowerButton = document.createElement('button');
+craftTowerButton.textContent = 'Craft Tower (5 Rocks)';
+craftTowerButton.style.position = 'absolute';
+craftTowerButton.style.left = '10px';
+craftTowerButton.style.top = '90px';
+craftTowerButton.addEventListener('click', craftTower);
+document.body.appendChild(craftTowerButton);
 
 function gameLoop() {
     update();

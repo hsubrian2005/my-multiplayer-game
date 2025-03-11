@@ -57,6 +57,7 @@ wss.on('connection', (ws) => {
                 case 'hitEnemy':
                     if (mapObjects[data.index] && mapObjects[data.index].type === 'enemy') {
                         mapObjects[data.index].health -= data.damage;
+                        console.log(`Enemy health: ${mapObjects[data.index].health}`);
                         if (mapObjects[data.index].health <= 0) {
                             const enemyX = mapObjects[data.index].x;
                             const enemyY = mapObjects[data.index].y;
@@ -150,7 +151,7 @@ setInterval(() => {
         radius: 12,
         color: 'red',
         speed: 2,
-        health: 3 // 3 hits to kill
+        health: 3
     };
     mapObjects.push(newEnemy);
     console.log("Enemy spawned!");
