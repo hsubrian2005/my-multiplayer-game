@@ -16,7 +16,7 @@ wss.on('connection', (ws) => {
         id: playerId,
         x: 400,
         y: 300,
-        color: '#FF0000', // Default, updated by team
+        color: '#FF0000',
         team: null,
         lastUpdate: Date.now()
     };
@@ -54,17 +54,23 @@ wss.on('connection', (ws) => {
                 case 'craft':
                     mapObjects.push(data.object);
                     break;
-                case 'killEnemy':
-                    mapObjects.splice(data.index, 1);
-                    if (Math.random() < 0.5) { // 50% chance to drop a rock
-                        const droppedRock = {
-                            type: 'rock',
-                            x: data.x || mapObjects[data.index]?.x || players[playerId].x,
-                            y: data.y || mapObjects[data.index]?.y || players[playerId].y,
-                            radius: 15,
-                            color: 'gray'
-                        };
-                        mapObjects.push(droppedRock);
+                case 'hitEnemy':
+                    if (mapObjects[data.index] && mapObjects[data.index].type === 'enemy') {
+                        mapObjects[data.index].health -= data.damage;
+                        if (mapObjects[data.index].health <= 0) {
+                            const enemyX = mapObjects[data.index].x;
+                            const enemyY = mapObjects[data.index].y;
+                            mapObjects.splice(data.index, 1);
+                            if (Math.random() < 0.5) {
+                                mapObjects.push({
+                                    type: 'rock',
+                                    x: enemyX,
+                                    y: enemyY,
+                                    radius: 15,
+                                    color: 'gray'
+                                });
+                            }
+                        }
                     }
                     break;
                 case 'chat':
@@ -78,6 +84,15 @@ wss.on('connection', (ws) => {
                 case 'setTeam':
                     players[playerId].team = data.team;
                     players[playerId].color = data.team === 'Blue' ? '#0000FF' : '#FF0000';
+                    wss.clients.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'update',
+                                players: players,
+                                mapObjects: mapObjects
+                            }));
+                        }
+                    });
                     break;
             }
             wss.clients.forEach(client => {
@@ -134,7 +149,8 @@ setInterval(() => {
         y: Math.random() * 1800 + 100,
         radius: 12,
         color: 'red',
-        speed: 2
+        speed: 2,
+        health: 3 // 3 hits to kill
     };
     mapObjects.push(newEnemy);
     console.log("Enemy spawned!");

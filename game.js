@@ -37,9 +37,6 @@ document.addEventListener('keyup', (e) => {
 const socket = new WebSocket('ws://localhost:8080');
 socket.onopen = () => {
     console.log("Connected to server");
-    // Prompt for team on connect
-    const team = prompt("Choose a team: Red or Blue").toLowerCase();
-    socket.send(JSON.stringify({ type: 'setTeam', team: team === 'blue' ? 'Blue' : 'Red' }));
 };
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
@@ -53,6 +50,11 @@ socket.onmessage = (event) => {
             if (data.mapObjects) {
                 map.objects = data.mapObjects;
             }
+            // Prompt for team after init ensures playerId exists
+            if (!player.team) {
+                const team = prompt("Choose a team: Red or Blue").toLowerCase();
+                socket.send(JSON.stringify({ type: 'setTeam', team: team === 'blue' ? 'Blue' : 'Red' }));
+            }
             break;
         case 'playerJoined':
             otherPlayers[data.player.id] = data.player;
@@ -63,6 +65,10 @@ socket.onmessage = (event) => {
         case 'update':
             otherPlayers = { ...data.players };
             delete otherPlayers[playerId];
+            if (data.players[playerId]) {
+                player.color = data.players[playerId].color;
+                player.team = data.players[playerId].team;
+            }
             if (data.mapObjects) {
                 map.objects = data.mapObjects;
             }
@@ -93,9 +99,8 @@ function checkCollisions() {
                 const dy = player.y - obj.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 if (distance < 10 + obj.radius) {
-                    map.objects.splice(index, 1);
-                    socket.send(JSON.stringify({ type: 'killEnemy', index: index }));
-                    console.log("Defeated an enemy!");
+                    socket.send(JSON.stringify({ type: 'hitEnemy', index: index, damage: 1 }));
+                    console.log("Hit an enemy!");
                 }
             }
         });
@@ -111,7 +116,7 @@ function craftWall() {
             y: player.y,
             width: 40,
             height: 20,
-            color: player.team === 'Blue' ? '#0000FF' : '#FF0000' // Team-colored walls
+            color: player.team === 'Blue' ? '#0000FF' : '#FF0000'
         };
         map.objects.push(newWall);
         socket.send(JSON.stringify({ type: 'craft', object: newWall }));
@@ -156,6 +161,12 @@ function draw() {
                 ctx.beginPath();
                 ctx.arc(obj.x - camera.x, obj.y - camera.y, obj.radius, 0, Math.PI * 2);
                 ctx.fill();
+                // Show enemy health
+                if (obj.type === 'enemy' && obj.health) {
+                    ctx.fillStyle = 'black';
+                    ctx.font = '12px Arial';
+                    ctx.fillText(obj.health, obj.x - camera.x - 5, obj.y - camera.y - 15);
+                }
             }
         });
     }
@@ -172,14 +183,12 @@ function draw() {
         ctx.fill();
     });
 
-    // UI: Team and inventory
     ctx.fillStyle = 'black';
     ctx.font = '16px Arial';
     ctx.fillText(`Team: ${player.team || 'None'}`, 10, 20);
     ctx.fillText(`Rocks: ${inventory.rocks}`, 10, 40);
 }
 
-// Crafting button
 const craftButton = document.createElement('button');
 craftButton.textContent = 'Craft Wall (3 Rocks)';
 craftButton.style.position = 'absolute';
