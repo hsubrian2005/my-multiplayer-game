@@ -90,7 +90,7 @@ wss.on('connection', (ws) => {
 setInterval(() => {
     const newRock = {
         type: 'rock',
-        x: Math.random() * 1800 + 100, // Within map bounds
+        x: Math.random() * 1800 + 100,
         y: Math.random() * 1800 + 100,
         radius: 15,
         color: 'gray'
