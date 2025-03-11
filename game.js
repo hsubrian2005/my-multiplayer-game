@@ -1,75 +1,57 @@
-// Canvas setup
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// Scene setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-// Player object
-const player = { x: 400, y: 300, speed: 5, color: '#FF0000', team: null };
+// Ground
+const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
+const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x90EE90 });
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// Player
+const playerGeometry = new THREE.CylinderGeometry(5, 5, 20, 32);
+let player = null;
 let playerId = null;
-let otherPlayers = {};
+const otherPlayers = {};
 
-// Map with objects
-const map = {
-    width: 2000,
-    height: 2000,
-    objects: [
-        { type: 'tree', x: 500, y: 200, radius: 20, color: 'green' },
-        { type: 'rock', x: 300, y: 400, radius: 15, color: 'gray' },
-        { type: 'water', x: 700, y: 600, width: 100, height: 50, color: '#00BFFF' }
-    ]
-};
-
-// Camera
-const camera = { x: 0, y: 0 };
-
-// Inventory
+// Game state
+const map = { objects: [] };
 let inventory = { rocks: 0 };
 
-// Movement controls
+// Controls
 const keys = {};
-document.addEventListener('keydown', (e) => {
-    keys[e.key.toLowerCase()] = true;
-});
-document.addEventListener('keyup', (e) => {
-    keys[e.key.toLowerCase()] = false;
-});
+document.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 
-// WebSocket connection
+// WebSocket
 const socket = new WebSocket('ws://localhost:8080');
-socket.onopen = () => {
-    console.log("Connected to server");
-};
+socket.onopen = () => console.log("Connected to server");
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
     switch (data.type) {
         case 'init':
             playerId = data.id;
-            player.color = data.players[playerId].color;
-            player.team = data.players[playerId].team;
-            otherPlayers = { ...data.players };
-            delete otherPlayers[playerId];
-            if (data.mapObjects) {
-                map.objects = data.mapObjects;
-            }
-            if (!player.team) {
-                showTeamButtons();
-            }
+            player = createStickman(data.players[playerId]);
+            scene.add(player);
+            updatePlayers(data.players);
+            if (data.mapObjects) updateMapObjects(data.mapObjects);
+            if (!data.players[playerId].team) showTeamButtons();
             break;
         case 'playerJoined':
-            otherPlayers[data.player.id] = data.player;
+            otherPlayers[data.player.id] = createStickman(data.player);
+            scene.add(otherPlayers[data.player.id]);
             break;
         case 'playerLeft':
+            scene.remove(otherPlayers[data.id]);
             delete otherPlayers[data.id];
             break;
         case 'update':
-            otherPlayers = { ...data.players };
-            delete otherPlayers[playerId];
-            if (data.players[playerId]) {
-                player.color = data.players[playerId].color;
-                player.team = data.players[playerId].team;
-            }
-            if (data.mapObjects) {
-                map.objects = data.mapObjects;
-            }
+            updatePlayers(data.players);
+            if (data.mapObjects) updateMapObjects(data.mapObjects);
             break;
         case 'chat':
             messages.innerHTML += `<p>${data.text}</p>`;
@@ -78,191 +60,135 @@ socket.onmessage = (event) => {
     }
 };
 
-// Team selection UI
+// Helper functions
+function createStickman(data) {
+    const material = new THREE.MeshBasicMaterial({ color: parseInt(data.color.slice(1), 16) });
+    const mesh = new THREE.Mesh(playerGeometry, material);
+    mesh.position.set(data.x, 10, data.z || 0); // y=10 to center cylinder
+    return mesh;
+}
+
+function updatePlayers(playersData) {
+    Object.entries(playersData).forEach(([id, p]) => {
+        if (id === playerId) {
+            player.material.color.setHex(parseInt(p.color.slice(1), 16));
+            document.getElementById('team').textContent = p.team || 'None';
+        } else if (otherPlayers[id]) {
+            otherPlayers[id].position.set(p.x, 10, p.z || 0);
+            otherPlayers[id].material.color.setHex(parseInt(p.color.slice(1), 16));
+        }
+    });
+}
+
+function updateMapObjects(objects) {
+    map.objects.forEach(obj => scene.remove(obj));
+    map.objects = objects.map(obj => {
+        let geometry, material;
+        if (obj.type === 'rock' || obj.type === 'enemy') {
+            geometry = new THREE.SphereGeometry(obj.radius, 32, 32);
+            material = new THREE.MeshBasicMaterial({ color: parseInt(obj.color.slice(1), 16) });
+        } else {
+            geometry = new THREE.BoxGeometry(obj.width, obj.height, obj.depth || obj.height);
+            material = new THREE.MeshBasicMaterial({ color: parseInt(obj.color.slice(1), 16) });
+        }
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(obj.x, (obj.height || obj.radius) / 2, obj.z || 0);
+        if (obj.type === 'enemy' && obj.health) {
+            const text = new THREE.Mesh(
+                new THREE.TextGeometry(obj.health.toString(), { font: new THREE.Font(), size: 5, height: 1 }),
+                new THREE.MeshBasicMaterial({ color: 0x000000 })
+            );
+            text.position.set(obj.x - 5, obj.radius + 5, obj.z || 0);
+            scene.add(text);
+            setTimeout(() => scene.remove(text), 100); // Temp health display
+        }
+        scene.add(mesh);
+        return mesh;
+    });
+}
+
 function showTeamButtons() {
     const teamDiv = document.createElement('div');
-    teamDiv.style.position = 'absolute';
-    teamDiv.style.top = '100px';
-    teamDiv.style.left = '10px';
-    teamDiv.style.background = 'rgba(255, 255, 255, 0.8)';
-    teamDiv.style.padding = '10px';
-
-    const redButton = document.createElement('button');
-    redButton.textContent = 'Join Red Team';
-    redButton.style.backgroundColor = '#FF0000';
-    redButton.style.color = 'white';
-    redButton.addEventListener('click', () => {
-        socket.send(JSON.stringify({ type: 'setTeam', team: 'Red' }));
-        document.body.removeChild(teamDiv);
+    teamDiv.style.cssText = 'position:absolute;top:100px;left:10px;background:rgba(255,255,255,0.8);padding:10px;';
+    ['Red', 'Blue'].forEach(team => {
+        const btn = document.createElement('button');
+        btn.textContent = `Join ${team} Team`;
+        btn.style.cssText = `background:${team === 'Red' ? '#FF0000' : '#0000FF'};color:white;margin:0 5px;`;
+        btn.onclick = () => {
+            socket.send(JSON.stringify({ type: 'setTeam', team }));
+            document.body.removeChild(teamDiv);
+        };
+        teamDiv.appendChild(btn);
     });
-
-    const blueButton = document.createElement('button');
-    blueButton.textContent = 'Join Blue Team';
-    blueButton.style.backgroundColor = '#0000FF';
-    blueButton.style.color = 'white';
-    blueButton.style.marginLeft = '10px';
-    blueButton.addEventListener('click', () => {
-        socket.send(JSON.stringify({ type: 'setTeam', team: 'Blue' }));
-        document.body.removeChild(teamDiv);
-    });
-
-    teamDiv.appendChild(redButton);
-    teamDiv.appendChild(blueButton);
     document.body.appendChild(teamDiv);
 }
 
-function checkCollisions() {
-    if (Array.isArray(map.objects)) {
-        map.objects.forEach((obj, index) => {
-            if (obj.type === 'rock') {
-                const dx = player.x - obj.x;
-                const dy = player.y - obj.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                if (distance < 10 + obj.radius) {
-                    inventory.rocks += 1;
-                    map.objects.splice(index, 1);
-                    socket.send(JSON.stringify({ type: 'collect', index: index }));
-                    console.log(`Collected a rock! Rocks: ${inventory.rocks}`);
-                }
-            }
-            if (obj.type === 'enemy') {
-                const dx = player.x - obj.x;
-                const dy = player.y - obj.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                if (distance < 10 + obj.radius) {
-                    socket.send(JSON.stringify({ type: 'hitEnemy', index: index, damage: 1 }));
-                    console.log("Hit an enemy!");
-                }
-            }
-        });
-    }
-}
-
-function craftWall() {
+// Crafting
+document.getElementById('craftWall').addEventListener('click', () => {
     if (inventory.rocks >= 3) {
         inventory.rocks -= 3;
-        const newWall = {
-            type: 'wall',
-            x: player.x + 20,
-            y: player.y,
-            width: 40,
-            height: 20,
-            color: player.team === 'Blue' ? '#0000FF' : '#FF0000'
-        };
-        map.objects.push(newWall);
-        socket.send(JSON.stringify({ type: 'craft', object: newWall }));
-        console.log("Crafted a wall!");
-    } else {
-        console.log("Need 3 rocks to craft a wall!");
+        document.getElementById('rocks').textContent = inventory.rocks;
+        socket.send(JSON.stringify({
+            type: 'craft',
+            object: { type: 'wall', x: player.position.x + 20, y: 10, z: player.position.z, width: 40, height: 20, color: player.material.color.getHexString() }
+        }));
     }
-}
+});
 
-function craftTower() {
+document.getElementById('craftTower').addEventListener('click', () => {
     if (inventory.rocks >= 5) {
         inventory.rocks -= 5;
-        const newTower = {
-            type: 'tower',
-            x: player.x + 20,
-            y: player.y,
-            width: 30,
-            height: 30,
-            color: player.team === 'Blue' ? '#0000FF' : '#FF0000'
-        };
-        map.objects.push(newTower);
-        socket.send(JSON.stringify({ type: 'craft', object: newTower }));
-        console.log("Crafted a tower!");
-    } else {
-        console.log("Need 5 rocks to craft a tower!");
-    }
-}
+        document.getElementById('rocks').textContent = inventory.rocks;
+        socket.send(JSON.stringify({
+            type: 'craft _
 
+            object: { type: 'tower', x: player.position.x + 20, y: 15, z: player.position.z, width: 30, height: 30, color: player.material.color.getHexString() }
+        }));
+    }
+});
+
+// Game loop
 function update() {
-    if (keys['w'] || keys['arrowup']) player.y -= player.speed;
-    if (keys['s'] || keys['arrowdown']) player.y += player.speed;
-    if (keys['a'] || keys['arrowleft']) player.x -= player.speed;
-    if (keys['d'] || keys['arrowright']) player.x += player.speed;
+    if (player) {
+        const speed = 5;
+        if (keys['w']) player.position.z -= speed;
+        if (keys['s']) player.position.z += speed;
+        if (keys['a']) player.position.x -= speed;
+        if (keys['d']) player.position.x += speed;
 
-    player.x = Math.max(0, Math.min(map.width - 20, player.x));
-    player.y = Math.max(0, Math.min(map.height - 20, player.y));
+        player.position.x = Math.max(0, Math.min(2000, player.position.x));
+        player.position.z = Math.max(0, Math.min(2000, player.position.z));
 
-    camera.x = player.x - canvas.width / 2;
-    camera.y = player.y - canvas.height / 2;
-    camera.x = Math.max(0, Math.min(map.width - canvas.width, camera.x));
-    camera.y = Math.max(0, Math.min(map.height - canvas.height, camera.y));
+        camera.position.set(player.position.x, 100, player.position.z - 100);
+        camera.lookAt(player.position);
 
-    checkCollisions();
+        checkCollisions();
 
-    if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'move', x: player.x, y: player.y }));
+        socket.send(JSON.stringify({ type: 'move', x: player.position.x, y: player.position.y, z: player.position.z }));
     }
+    renderer.render(scene, camera);
+    requestAnimationFrame(update);
 }
 
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#90EE90';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (Array.isArray(map.objects)) {
-        map.objects.forEach(obj => {
-            ctx.fillStyle = obj.color;
-            if (obj.type === 'water' || obj.type === 'wall' || obj.type === 'tower') {
-                ctx.fillRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
-            } else {
-                ctx.beginPath();
-                ctx.arc(obj.x - camera.x, obj.y - camera.y, obj.radius, 0, Math.PI * 2);
-                ctx.fill();
-                if (obj.type === 'enemy' && obj.health) {
-                    ctx.fillStyle = 'black';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(obj.health, obj.x - camera.x - 5, obj.y - camera.y - 15);
-                }
-            }
-        });
-    }
-
-    ctx.fillStyle = player.color;
-    ctx.beginPath();
-    ctx.arc(player.x - camera.x, player.y - camera.y, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    Object.values(otherPlayers).forEach(p => {
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x - camera.x, p.y - camera.y, 10, 0, Math.PI * 2);
-        ctx.fill();
+function checkCollisions() {
+    map.objects.forEach((obj, index) => {
+        const dx = player.position.x - obj.position.x;
+        const dz = player.position.z - obj.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (obj.type === 'rock' && distance < 15) {
+            inventory.rocks += 1;
+            document.getElementById('rocks').textContent = inventory.rocks;
+            socket.send(JSON.stringify({ type: 'collect', index }));
+        }
+        if (obj.type === 'enemy' && distance < 17) {
+            socket.send(JSON.stringify({ type: 'hitEnemy', index, damage: 1 }));
+        }
     });
-
-    ctx.fillStyle = 'black';
-    ctx.font = '16px Arial';
-    ctx.fillText(`Team: ${player.team || 'None'}`, 10, 20);
-    ctx.fillText(`Rocks: ${inventory.rocks}`, 10, 40);
 }
 
-// Crafting buttons
-const craftWallButton = document.createElement('button');
-craftWallButton.textContent = 'Craft Wall (3 Rocks)';
-craftWallButton.style.position = 'absolute';
-craftWallButton.style.left = '10px';
-craftWallButton.style.top = '60px';
-craftWallButton.addEventListener('click', craftWall);
-document.body.appendChild(craftWallButton);
+update();
 
-const craftTowerButton = document.createElement('button');
-craftTowerButton.textContent = 'Craft Tower (5 Rocks)';
-craftTowerButton.style.position = 'absolute';
-craftTowerButton.style.left = '10px';
-craftTowerButton.style.top = '90px';
-craftTowerButton.addEventListener('click', craftTower);
-document.body.appendChild(craftTowerButton);
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-gameLoop();
-
-// Chat functionality
+// Chat
 const chatInput = document.getElementById('chatInput');
 const messages = document.getElementById('messages');
 chatInput.addEventListener('keypress', (e) => {
