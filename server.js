@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
                 type: 'playerJoined',
-                player: enemies[playerId]
+                player: players[playerId] // Fixed typo: was "enemies[playerId]"
             }));
         }
     });
