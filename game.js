@@ -3,7 +3,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 // Player object
-const player = { x: 400, y: 300, speed: 5, color: '#FF0000' };
+const player = { x: 400, y: 300, speed: 5, color: '#FF0000', team: null };
 let playerId = null;
 let otherPlayers = {};
 
@@ -35,13 +35,19 @@ document.addEventListener('keyup', (e) => {
 
 // WebSocket connection
 const socket = new WebSocket('ws://localhost:8080');
-socket.onopen = () => console.log("Connected to server");
+socket.onopen = () => {
+    console.log("Connected to server");
+    // Prompt for team on connect
+    const team = prompt("Choose a team: Red or Blue").toLowerCase();
+    socket.send(JSON.stringify({ type: 'setTeam', team: team === 'blue' ? 'Blue' : 'Red' }));
+};
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
     switch (data.type) {
         case 'init':
             playerId = data.id;
             player.color = data.players[playerId].color;
+            player.team = data.players[playerId].team;
             otherPlayers = { ...data.players };
             delete otherPlayers[playerId];
             if (data.mapObjects) {
@@ -105,7 +111,7 @@ function craftWall() {
             y: player.y,
             width: 40,
             height: 20,
-            color: '#8B4513'
+            color: player.team === 'Blue' ? '#0000FF' : '#FF0000' // Team-colored walls
         };
         map.objects.push(newWall);
         socket.send(JSON.stringify({ type: 'craft', object: newWall }));
@@ -120,7 +126,6 @@ function update() {
     if (keys['s'] || keys['arrowdown']) player.y += player.speed;
     if (keys['a'] || keys['arrowleft']) player.x -= player.speed;
     if (keys['d'] || keys['arrowright']) player.x += player.speed;
-    if (keys['c']) craftWall();
 
     player.x = Math.max(0, Math.min(map.width - 20, player.x));
     player.y = Math.max(0, Math.min(map.height - 20, player.y));
@@ -167,10 +172,21 @@ function draw() {
         ctx.fill();
     });
 
+    // UI: Team and inventory
     ctx.fillStyle = 'black';
     ctx.font = '16px Arial';
-    ctx.fillText(`Rocks: ${inventory.rocks}`, 10, 20);
+    ctx.fillText(`Team: ${player.team || 'None'}`, 10, 20);
+    ctx.fillText(`Rocks: ${inventory.rocks}`, 10, 40);
 }
+
+// Crafting button
+const craftButton = document.createElement('button');
+craftButton.textContent = 'Craft Wall (3 Rocks)';
+craftButton.style.position = 'absolute';
+craftButton.style.left = '10px';
+craftButton.style.top = '60px';
+craftButton.addEventListener('click', craftWall);
+document.body.appendChild(craftButton);
 
 function gameLoop() {
     update();

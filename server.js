@@ -16,7 +16,8 @@ wss.on('connection', (ws) => {
         id: playerId,
         x: 400,
         y: 300,
-        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+        color: '#FF0000', // Default, updated by team
+        team: null,
         lastUpdate: Date.now()
     };
 
@@ -31,7 +32,7 @@ wss.on('connection', (ws) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
                 type: 'playerJoined',
-                player: players[playerId] // Fixed typo: was "enemies[playerId]"
+                player: players[playerId]
             }));
         }
     });
@@ -55,14 +56,28 @@ wss.on('connection', (ws) => {
                     break;
                 case 'killEnemy':
                     mapObjects.splice(data.index, 1);
+                    if (Math.random() < 0.5) { // 50% chance to drop a rock
+                        const droppedRock = {
+                            type: 'rock',
+                            x: data.x || mapObjects[data.index]?.x || players[playerId].x,
+                            y: data.y || mapObjects[data.index]?.y || players[playerId].y,
+                            radius: 15,
+                            color: 'gray'
+                        };
+                        mapObjects.push(droppedRock);
+                    }
                     break;
                 case 'chat':
-                    const chatMessage = `${playerId}: ${data.text}`;
+                    const chatMessage = `[${players[playerId].team || 'No Team'}] ${playerId}: ${data.text}`;
                     wss.clients.forEach(client => {
                         if (client.readyState === WebSocket.OPEN) {
                             client.send(JSON.stringify({ type: 'chat', text: chatMessage }));
                         }
                     });
+                    break;
+                case 'setTeam':
+                    players[playerId].team = data.team;
+                    players[playerId].color = data.team === 'Blue' ? '#0000FF' : '#FF0000';
                     break;
             }
             wss.clients.forEach(client => {
@@ -129,7 +144,6 @@ setInterval(() => {
 setInterval(() => {
     mapObjects.forEach(obj => {
         if (obj.type === 'enemy') {
-            // Find the nearest player
             let nearestPlayer = null;
             let minDistance = Infinity;
             Object.values(players).forEach(p => {
@@ -142,7 +156,6 @@ setInterval(() => {
                 }
             });
             if (nearestPlayer) {
-                // Move toward the nearest player
                 const dx = nearestPlayer.x - obj.x;
                 const dy = nearestPlayer.y - obj.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
