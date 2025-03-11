@@ -82,6 +82,16 @@ function checkCollisions() {
                     console.log(`Collected a rock! Rocks: ${inventory.rocks}`);
                 }
             }
+            if (obj.type === 'enemy') {
+                const dx = player.x - obj.x;
+                const dy = player.y - obj.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < 10 + obj.radius) {
+                    map.objects.splice(index, 1);
+                    socket.send(JSON.stringify({ type: 'killEnemy', index: index }));
+                    console.log("Defeated an enemy!");
+                }
+            }
         });
     }
 }

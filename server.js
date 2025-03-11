@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
                 type: 'playerJoined',
-                player: players[playerId]
+                player: enemies[playerId]
             }));
         }
     });
@@ -52,6 +52,9 @@ wss.on('connection', (ws) => {
                     break;
                 case 'craft':
                     mapObjects.push(data.object);
+                    break;
+                case 'killEnemy':
+                    mapObjects.splice(data.index, 1);
                     break;
                 case 'chat':
                     const chatMessage = `${playerId}: ${data.text}`;
@@ -107,3 +110,56 @@ setInterval(() => {
     });
     console.log("Rock respawned!");
 }, 30000);
+
+// Spawn enemies every 20 seconds
+setInterval(() => {
+    const newEnemy = {
+        type: 'enemy',
+        x: Math.random() * 1800 + 100,
+        y: Math.random() * 1800 + 100,
+        radius: 12,
+        color: 'red',
+        speed: 2
+    };
+    mapObjects.push(newEnemy);
+    console.log("Enemy spawned!");
+}, 20000);
+
+// Update enemy positions every 100ms
+setInterval(() => {
+    mapObjects.forEach(obj => {
+        if (obj.type === 'enemy') {
+            // Find the nearest player
+            let nearestPlayer = null;
+            let minDistance = Infinity;
+            Object.values(players).forEach(p => {
+                const dx = p.x - obj.x;
+                const dy = p.y - obj.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestPlayer = p;
+                }
+            });
+            if (nearestPlayer) {
+                // Move toward the nearest player
+                const dx = nearestPlayer.x - obj.x;
+                const dy = nearestPlayer.y - obj.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > 0) {
+                    obj.x += (dx / distance) * obj.speed;
+                    obj.y += (dy / distance) * obj.speed;
+                }
+            }
+        }
+    });
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'update',
+                players: players,
+                mapObjects: mapObjects
+            }));
+        }
+    });
+}, 100);
